@@ -1,0 +1,1467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Strain Lineage Viewer</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,400&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap');
+
+:root {
+  --bg:        #f7f6f2;
+  --surface:   #ffffff;
+  --surface2:  #f0efe9;
+  --surface3:  #e8e6de;
+  --border:    #dddad0;
+  --border2:   #c8c4b8;
+  --ink:       #1a1916;
+  --ink2:      #3d3b36;
+  --muted:     #7a7669;
+  --accent:    #2d6a4f;
+  --accent-lt: #d8f3dc;
+  --accent2:   #1e40af;
+  --accent2-lt:#dbeafe;
+  --warn:      #92400e;
+  --warn-lt:   #fef3c7;
+  --mono:      'DM Mono', monospace;
+  --sans:      'DM Sans', sans-serif;
+  --r:         5px;
+  --r-lg:      10px;
+  --sh:        0 1px 3px rgba(0,0,0,0.07), 0 1px 2px rgba(0,0,0,0.04);
+  --sh-md:     0 4px 12px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04);
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 14px;
+  min-height: 100vh;
+  line-height: 1.6;
+}
+
+/* ── Header ── */
+header {
+  background: var(--ink);
+  padding: 0 32px;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 200;
+}
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--mono);
+  font-size: 13px;
+  color: #fff;
+  letter-spacing: 0.02em;
+}
+.logo-mark {
+  width: 26px; height: 26px;
+  background: var(--accent);
+  border-radius: 4px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px;
+}
+.header-tag {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--muted);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border: 1px solid #333;
+  padding: 2px 8px;
+  border-radius: 3px;
+}
+
+/* ── Layout ── */
+.app-shell {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  min-height: calc(100vh - 52px);
+}
+@media (max-width: 780px) {
+  .app-shell { grid-template-columns: 1fr; }
+}
+
+/* ── Sidebar ── */
+.sidebar {
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  overflow-y: auto;
+  max-height: calc(100vh - 52px);
+  position: sticky;
+  top: 52px;
+}
+
+.section-head {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.section-head::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+/* Upload cards */
+.upload-card {
+  background: var(--surface2);
+  border: 1.5px dashed var(--border2);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  transition: border-color 0.15s;
+  cursor: pointer;
+  position: relative;
+}
+.upload-card.loaded  { border-style: solid; border-color: var(--accent); background: #f0faf4; }
+.upload-card.drag-over { border-color: var(--accent2); background: var(--accent2-lt); }
+.upload-card input[type=file] {
+  position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+}
+.upload-inner {
+  padding: 12px 14px;
+  display: flex; align-items: center; gap: 10px;
+  pointer-events: none;
+}
+.upload-icon { font-size: 20px; flex-shrink: 0; }
+.upload-text-wrap { flex: 1; min-width: 0; }
+.upload-title {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--ink2);
+  letter-spacing: 0.04em;
+}
+.upload-sub {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.upload-badge {
+  font-family: var(--mono);
+  font-size: 9px;
+  padding: 2px 7px;
+  border-radius: 3px;
+  background: var(--surface3);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.upload-badge.ok { background: var(--accent-lt); color: var(--accent); border-color: #a7d9b3; }
+
+/* Tabs */
+.tabs {
+  display: flex;
+  gap: 2px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 3px;
+}
+.tab-btn {
+  flex: 1;
+  background: none;
+  border: none;
+  border-radius: 3px;
+  padding: 7px 6px;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+  white-space: nowrap;
+}
+.tab-btn.active {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--sh);
+}
+
+/* Inputs */
+.input-wrap { position: relative; }
+.input-wrap input, .input-wrap textarea {
+  width: 100%;
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  border-radius: var(--r);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 9px 12px;
+  outline: none;
+  transition: border-color 0.12s, background 0.12s;
+  resize: vertical;
+}
+.input-wrap input:focus, .input-wrap textarea:focus {
+  border-color: var(--accent);
+  background: var(--surface);
+}
+.input-hint {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+/* Buttons */
+.btn-primary {
+  display: flex; align-items: center; justify-content: center; gap: 7px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--r);
+  padding: 9px 16px;
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.12s, transform 0.1s;
+  width: 100%;
+}
+.btn-primary:hover { background: #235c42; }
+.btn-primary:active { transform: scale(0.98); }
+.btn-primary:disabled { background: var(--border2); color: var(--muted); cursor: not-allowed; transform: none; }
+.btn-secondary {
+  display: inline-flex; align-items: center; gap: 5px;
+  background: var(--surface2);
+  color: var(--ink2);
+  border: 1px solid var(--border2);
+  border-radius: var(--r);
+  padding: 6px 12px;
+  font-family: var(--sans);
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s;
+}
+.btn-secondary:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-lt); }
+
+/* Status */
+.status-msg {
+  font-family: var(--mono);
+  font-size: 11px;
+  border-radius: var(--r);
+  padding: 8px 12px;
+  display: none;
+}
+.status-msg.err  { display: block; background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
+.status-msg.info { display: block; background: var(--warn-lt); border: 1px solid #fde68a; color: var(--warn); }
+.status-msg.ok   { display: block; background: var(--accent-lt); border: 1px solid #a7d9b3; color: var(--accent); }
+
+/* ── Main panel ── */
+.main-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - 52px);
+  overflow: hidden;
+}
+
+.panel-placeholder {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 40px;
+  color: var(--muted);
+  text-align: center;
+}
+.placeholder-glyph {
+  font-size: 48px;
+  opacity: 0.3;
+}
+.placeholder-title {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--border2);
+  letter-spacing: 0.04em;
+}
+.placeholder-sub {
+  font-size: 12px;
+  color: var(--border2);
+  max-width: 340px;
+  line-height: 1.6;
+}
+
+/* ── Results ── */
+#resultsPanel { display: none; flex-direction: column; flex: 1; overflow: hidden; }
+
+/* Results top bar */
+.results-bar {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 10px 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.results-title {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink2);
+  font-weight: 500;
+}
+.results-subtitle {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--muted);
+}
+.results-actions { margin-left: auto; display: flex; gap: 6px; }
+
+/* ── Chart area ── */
+#chartContainer {
+  flex: 1;
+  overflow: hidden;
+  background: var(--bg);
+  position: relative;
+  min-height: 400px;
+}
+#d3Canvas {
+  width: 100%;
+  height: 100%;
+}
+
+/* Chart controls */
+.chart-controls {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.chart-ctrl-btn {
+  width: 32px; height: 32px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  font-size: 16px;
+  box-shadow: var(--sh);
+  transition: background 0.12s;
+}
+.chart-ctrl-btn:hover { background: var(--surface2); }
+
+/* ── Info panel (below chart) ── */
+#infoPanel {
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  max-height: 340px;
+  overflow-y: auto;
+  display: none;
+}
+.info-header {
+  padding: 12px 20px 10px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  z-index: 10;
+}
+.info-strain-name {
+  font-family: var(--mono);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink);
+}
+.info-close {
+  margin-left: auto;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1;
+  padding: 0 4px;
+}
+.info-close:hover { color: var(--ink); }
+
+.info-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+}
+@media (max-width: 900px) { .info-grid { grid-template-columns: 1fr; } }
+
+.info-section {
+  padding: 14px 20px;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.info-section:nth-child(even) { border-right: none; }
+.info-section-label {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.info-section-value {
+  font-family: var(--sans);
+  font-size: 12px;
+  color: var(--ink2);
+  line-height: 1.5;
+}
+
+/* Integration chips */
+.chip-row { display: flex; flex-wrap: wrap; gap: 5px; }
+.chip {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 4px 9px;
+  border-radius: 4px;
+  background: var(--accent2-lt);
+  border: 1px solid #bfdbfe;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--accent2);
+}
+.chip .chip-locus {
+  font-size: 9px;
+  color: #4b72b0;
+  opacity: 0.8;
+}
+
+/* ── Search results ── */
+#searchResults {
+  padding: 16px 20px;
+  display: none;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  flex: 1;
+}
+.search-results-head {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.strain-result-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  box-shadow: var(--sh);
+  transition: border-color 0.15s;
+}
+.strain-result-card:hover { border-color: var(--accent); }
+.src-header {
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface2);
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+.src-name {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink);
+}
+.src-desc {
+  font-size: 11px;
+  color: var(--muted);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.src-badge {
+  font-family: var(--mono);
+  font-size: 9px;
+  padding: 2px 7px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+.src-badge.complete { background: var(--accent-lt); color: var(--accent); border: 1px solid #a7d9b3; }
+.src-badge.partial  { background: var(--warn-lt); color: var(--warn); border: 1px solid #fde68a; }
+.src-body {
+  padding: 12px 16px;
+  display: none;
+}
+.src-body.open { display: block; }
+
+/* Lineage steps */
+.lineage-steps { display: flex; flex-direction: column; gap: 0; }
+.lineage-step {
+  display: flex;
+  gap: 12px;
+  position: relative;
+  padding-bottom: 12px;
+}
+.lineage-step:last-child { padding-bottom: 0; }
+.step-connector {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
+  width: 20px;
+}
+.step-dot {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  background: var(--border2);
+  border: 2px solid var(--surface);
+  flex-shrink: 0;
+  margin-top: 4px;
+}
+.step-dot.target { background: var(--accent); }
+.step-line {
+  width: 2px;
+  flex: 1;
+  background: var(--border);
+  margin-top: 2px;
+}
+.step-content { flex: 1; min-width: 0; }
+.step-strain {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ink2);
+}
+.step-strain.target { color: var(--accent); }
+.step-donor {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 2px;
+  line-height: 1.4;
+}
+
+/* D3 node styles */
+.node circle {
+  stroke-width: 2;
+  cursor: pointer;
+  transition: r 0.15s;
+}
+.node text {
+  font-family: var(--mono);
+  font-size: 10px;
+  pointer-events: none;
+  fill: var(--ink2);
+}
+.node .node-label-bg {
+  fill: white;
+  rx: 3;
+  fill-opacity: 0.9;
+}
+.link {
+  fill: none;
+  stroke: var(--border2);
+  stroke-width: 1.5;
+  stroke-opacity: 0.7;
+}
+.link.highlighted { stroke: var(--accent); stroke-opacity: 1; stroke-width: 2; }
+
+/* Spinner */
+.spinner {
+  display: inline-block;
+  width: 12px; height: 12px;
+  border: 2px solid rgba(255,255,255,0.35);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  vertical-align: middle;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Tooltip */
+#tooltip {
+  position: fixed;
+  background: var(--ink);
+  color: #fff;
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 6px 10px;
+  border-radius: 4px;
+  pointer-events: none;
+  display: none;
+  z-index: 1000;
+  max-width: 260px;
+  line-height: 1.5;
+}
+
+/* node highlight ring */
+.node.selected circle { stroke: var(--accent) !important; }
+
+/* about panel */
+.about-panel {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+}
+.about-toggle {
+  width: 100%;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px;
+  background: none; border: none; cursor: pointer;
+  font-family: var(--mono); font-size: 10px; color: var(--ink2);
+  letter-spacing: 0.04em; text-align: left;
+  gap: 8px; transition: background 0.12s;
+}
+.about-toggle:hover { background: var(--surface3); }
+.about-body { display: none; padding: 0 14px 12px; }
+.about-panel.open .about-body { display: block; }
+.about-chevron { transition: transform 0.2s; color: var(--muted); }
+.about-panel.open .about-chevron { transform: rotate(180deg); }
+.about-body p { font-size: 11px; color: var(--muted); line-height: 1.6; margin-top: 8px; }
+.about-body code { font-family: var(--mono); font-size: 10px; background: var(--surface3); padding: 1px 4px; border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-mark">🧬</div>
+    Strain Lineage Viewer
+  </div>
+  <div class="header-tag">Erg Bio · EBY/EBB</div>
+</header>
+
+<div class="app-shell">
+
+  <!-- ── Sidebar ── -->
+  <aside class="sidebar">
+
+    <!-- About -->
+    <div class="about-panel" id="aboutPanel">
+      <button class="about-toggle" onclick="toggleAbout()">
+        <span>ℹ About &amp; file format</span>
+        <svg class="about-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+      <div class="about-body">
+        <p>Upload your EBY yeast and EBB bacteria CSV files to explore strain lineages, integrations, and search by construct.</p>
+        <p style="margin-top:6px;"><strong>EBY CSV</strong> needs columns: <code>Erg Bio name</code>, <code>Parent Strain</code>, <code>Transformed donor; locus</code>, <code>Description</code>, <code>Last uncured plasmid present</code>, <code>Notes</code></p>
+        <p style="margin-top:6px;"><strong>EBB CSV</strong> needs columns: <code>Erg Bio name</code>, <code>Description</code></p>
+        <p style="margin-top:6px;">All processing happens in your browser — no data is uploaded anywhere.</p>
+      </div>
+    </div>
+
+    <!-- File uploads -->
+    <div>
+      <div class="section-head">Data files</div>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+
+        <div class="upload-card" id="cardEBY"
+             ondragover="doDragOver(event,'cardEBY')"
+             ondragleave="doDragLeave('cardEBY')"
+             ondrop="doDrop(event,'eby')">
+          <input type="file" accept=".csv" onchange="handleFile(event,'eby')"/>
+          <div class="upload-inner">
+            <div class="upload-icon">🧫</div>
+            <div class="upload-text-wrap">
+              <div class="upload-title">EBY Yeast Strains</div>
+              <div class="upload-sub" id="fnEBY">Drop CSV or click to browse</div>
+            </div>
+            <span class="upload-badge" id="badgeEBY">—</span>
+          </div>
+        </div>
+
+        <div class="upload-card" id="cardEBB"
+             ondragover="doDragOver(event,'cardEBB')"
+             ondragleave="doDragLeave('cardEBB')"
+             ondrop="doDrop(event,'ebb')">
+          <input type="file" accept=".csv" onchange="handleFile(event,'ebb')"/>
+          <div class="upload-inner">
+            <div class="upload-icon">🔬</div>
+            <div class="upload-text-wrap">
+              <div class="upload-title">EBB Bacteria Constructs</div>
+              <div class="upload-sub" id="fnEBB">Drop CSV or click to browse</div>
+            </div>
+            <span class="upload-badge" id="badgeEBB">—</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Mode tabs -->
+    <div>
+      <div class="section-head">Mode</div>
+      <div class="tabs">
+        <button class="tab-btn active" id="tabLineage" onclick="switchTab('lineage')">Lineage</button>
+        <button class="tab-btn" id="tabSearch"  onclick="switchTab('search')">Search by EBB</button>
+      </div>
+    </div>
+
+    <!-- Lineage panel -->
+    <div id="panelLineage">
+      <div class="section-head">Strains to view</div>
+      <div class="input-wrap">
+        <textarea id="strainInput" rows="3" placeholder="e.g. EBY45, EBY112, Y88"></textarea>
+      </div>
+      <div class="input-hint">Comma-separated. EBY or Y prefix, any case.</div>
+      <div style="margin-top:10px;">
+        <button class="btn-primary" id="btnLineage" onclick="runLineage()" disabled>
+          <span id="btnLineageLabel">Show lineage</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Search panel -->
+    <div id="panelSearch" style="display:none;">
+      <div class="section-head">EBB constructs</div>
+      <div class="input-wrap">
+        <textarea id="ebbInput" rows="3" placeholder="e.g. EBB161, EBB224"></textarea>
+      </div>
+      <div class="input-hint">Comma-separated. Finds all EBY strains carrying these in their lineage.</div>
+      <div style="margin-top:10px;">
+        <button class="btn-primary" id="btnSearch" onclick="runSearch()" disabled>
+          <span id="btnSearchLabel">Search</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="status-msg" id="statusMsg"></div>
+
+  </aside>
+
+  <!-- ── Main panel ── -->
+  <main class="main-panel">
+
+    <!-- Placeholder -->
+    <div class="panel-placeholder" id="placeholder">
+      <div class="placeholder-glyph">🌿</div>
+      <div class="placeholder-title">Upload CSV files to begin</div>
+      <div class="placeholder-sub">Load EBY and EBB files in the sidebar, then enter strain names or EBB constructs to explore lineages.</div>
+    </div>
+
+    <!-- Results: lineage chart -->
+    <div id="resultsPanel">
+      <div class="results-bar">
+        <div>
+          <div class="results-title" id="resultsTitle">Lineage</div>
+          <div class="results-subtitle" id="resultsSubtitle"></div>
+        </div>
+        <div class="results-actions">
+          <button class="btn-secondary" onclick="resetZoom()">Reset zoom</button>
+          <button class="btn-secondary" onclick="clearResults()">✕ Clear</button>
+        </div>
+      </div>
+
+      <div id="chartContainer">
+        <svg id="d3Canvas"></svg>
+        <div class="chart-controls">
+          <div class="chart-ctrl-btn" onclick="zoomIn()" title="Zoom in">+</div>
+          <div class="chart-ctrl-btn" onclick="zoomOut()" title="Zoom out">−</div>
+          <div class="chart-ctrl-btn" onclick="resetZoom()" title="Fit">⊡</div>
+        </div>
+      </div>
+
+      <!-- Strain detail panel -->
+      <div id="infoPanel">
+        <div class="info-header">
+          <span class="info-strain-name" id="infoPanelTitle">—</span>
+          <button class="info-close" onclick="closeInfo()">×</button>
+        </div>
+        <div id="infoPanelBody"></div>
+      </div>
+    </div>
+
+    <!-- Results: search -->
+    <div id="searchResults">
+      <div class="search-results-head" id="searchResultsHead"></div>
+      <div id="searchResultsBody"></div>
+    </div>
+
+  </main>
+</div>
+
+<div id="tooltip"></div>
+
+<script>
+// ══════════════════════════════════════════════════════════════════
+//  STATE
+// ══════════════════════════════════════════════════════════════════
+let ebyData = null;   // raw parsed CSV rows
+let ebbData = null;
+let parsedEBY = {};   // { EBY11: { Parent, Donor, Description, ... } }
+let ebbDescDict = {}; // { EBB1: "description" }
+let currentTab = 'lineage';
+let zoomBehavior = null;
+let svgSelection = null;
+
+// ══════════════════════════════════════════════════════════════════
+//  UTILITY
+// ══════════════════════════════════════════════════════════════════
+function normalizeStrain(s) {
+  if (!s || typeof s !== 'string') return null;
+  s = s.trim().toUpperCase();
+  const m = s.match(/^(?:EBY|Y)(\d+)$/);
+  if (m) return `EBY${m[1]}`;
+  if (s.startsWith('EBB')) return s;
+  return s;
+}
+
+function safeStr(v) { return (typeof v === 'string') ? v.trim() : (v == null ? '' : String(v).trim()); }
+
+function parseGenotype(donorString) {
+  if (!donorString) return [];
+  const locusMatch = donorString.match(/@([^\s;,]+)/);
+  const locus = locusMatch ? locusMatch[1] : null;
+  const ebbs = [...donorString.matchAll(/EBB(\d+)/g)].map(m => `EBB${m[1]}`);
+  return ebbs.map(ebb => ({ ebb, locus }));
+}
+
+function extractParent(parentStr) {
+  if (!parentStr) return null;
+  const m = parentStr.match(/(EBY\d+|Y\d+)/i);
+  return m ? normalizeStrain(m[1]) : null;
+}
+
+function strainNumber(name) {
+  const m = name.match(/\d+/);
+  return m ? parseInt(m[0]) : 0;
+}
+
+function showStatus(msg, type) {
+  const el = document.getElementById('statusMsg');
+  el.textContent = msg;
+  el.className = 'status-msg ' + type;
+}
+function clearStatus() {
+  document.getElementById('statusMsg').className = 'status-msg';
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  FILE HANDLING
+// ══════════════════════════════════════════════════════════════════
+function handleFile(evt, type) {
+  const file = evt.target.files[0];
+  if (file) readCSV(file, type);
+}
+function doDragOver(evt, id) {
+  evt.preventDefault();
+  document.getElementById(id).classList.add('drag-over');
+}
+function doDragLeave(id) {
+  document.getElementById(id).classList.remove('drag-over');
+}
+function doDrop(evt, type) {
+  evt.preventDefault();
+  const id = type === 'eby' ? 'cardEBY' : 'cardEBB';
+  document.getElementById(id).classList.remove('drag-over');
+  const file = evt.dataTransfer.files[0];
+  if (file) readCSV(file, type);
+}
+
+function readCSV(file, type) {
+  Papa.parse(file, {
+    header: true,
+    skipEmptyLines: true,
+    complete: res => {
+      if (type === 'eby') {
+        ebyData = res.data;
+        parsedEBY = parseEBY(ebyData);
+        setFileLoaded('EBY', file.name, Object.keys(parsedEBY).length + ' strains');
+      } else {
+        ebbData = res.data;
+        ebbDescDict = {};
+        ebbData.forEach(row => {
+          const name = safeStr(row['Erg Bio name']);
+          if (name) ebbDescDict[name] = safeStr(row['Description']);
+        });
+        setFileLoaded('EBB', file.name, Object.keys(ebbDescDict).length + ' constructs');
+      }
+      checkReady();
+    },
+    error: e => showStatus('Parse error: ' + e.message, 'err')
+  });
+}
+
+function setFileLoaded(type, filename, detail) {
+  const card = document.getElementById(`card${type}`);
+  const badge = document.getElementById(`badge${type}`);
+  const fn    = document.getElementById(`fn${type}`);
+  card.classList.add('loaded');
+  badge.textContent = '✓';
+  badge.classList.add('ok');
+  fn.textContent = filename + ' · ' + detail;
+}
+
+function checkReady() {
+  const ready = !!(parsedEBY && Object.keys(parsedEBY).length > 0);
+  document.getElementById('btnLineage').disabled = !ready;
+  document.getElementById('btnSearch').disabled  = !ready;
+  if (ready && !document.getElementById('resultsPanel').style.display) {
+    document.getElementById('placeholder').style.display = 'none';
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  PARSE EBY
+// ══════════════════════════════════════════════════════════════════
+function parseEBY(rows) {
+  const out = {};
+  rows.forEach(row => {
+    const name = normalizeStrain(safeStr(row['Erg Bio name']));
+    if (!name || !name.startsWith('EBY')) return;
+    const donor = safeStr(row['Transformed donor; locus']);
+    out[name] = {
+      parent:      safeStr(row['Parent Strain']),
+      donor,
+      description: safeStr(row['Description']),
+      plasmid:     safeStr(row['Last uncured plasmid present']),
+      notes:       safeStr(row['Notes']),
+      genotypes:   parseGenotype(donor),
+    };
+  });
+  return out;
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  LINEAGE TRAVERSAL
+// ══════════════════════════════════════════════════════════════════
+function getLineage(strain, visited = new Set()) {
+  if (!parsedEBY[strain] || visited.has(strain)) return [];
+  visited.add(strain);
+  const steps = [];
+  const parent = extractParent(parsedEBY[strain].parent);
+  if (parent && parsedEBY[parent]) {
+    steps.push(...getLineage(parent, visited));
+  }
+  steps.push(strain);
+  return steps;
+}
+
+// Build a set of { id, parentId } for D3
+function buildGraphNodes(targetStrains) {
+  const included = new Set();
+  const parentMap = {};
+
+  function walk(strain) {
+    if (!parsedEBY[strain] || included.has(strain)) return;
+    included.add(strain);
+    const p = extractParent(parsedEBY[strain].parent);
+    if (p) {
+      parentMap[strain] = p;
+      walk(p);
+    }
+  }
+  targetStrains.forEach(walk);
+
+  return { nodes: [...included], parentMap };
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  TABS
+// ══════════════════════════════════════════════════════════════════
+function switchTab(tab) {
+  currentTab = tab;
+  document.getElementById('tabLineage').classList.toggle('active', tab === 'lineage');
+  document.getElementById('tabSearch').classList.toggle('active',  tab === 'search');
+  document.getElementById('panelLineage').style.display = tab === 'lineage' ? '' : 'none';
+  document.getElementById('panelSearch').style.display  = tab === 'search'  ? '' : 'none';
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  RUN LINEAGE
+// ══════════════════════════════════════════════════════════════════
+function runLineage() {
+  clearStatus();
+  const raw = document.getElementById('strainInput').value;
+  const targets = raw.split(',').map(s => normalizeStrain(s.trim())).filter(Boolean);
+
+  if (!targets.length) { showStatus('Enter at least one strain name.', 'err'); return; }
+
+  const missing = targets.filter(t => !parsedEBY[t]);
+  if (missing.length) {
+    showStatus(`Not found in EBY file: ${missing.join(', ')}`, 'err');
+    return;
+  }
+
+  setBtnLoading('btnLineage', 'btnLineageLabel', true);
+  setTimeout(() => {
+    try {
+      renderLineageChart(targets);
+    } catch(e) {
+      showStatus('Error: ' + e.message, 'err');
+    }
+    setBtnLoading('btnLineage', 'btnLineageLabel', false, 'Show lineage');
+  }, 60);
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  D3 TREE CHART
+// ══════════════════════════════════════════════════════════════════
+function renderLineageChart(targetStrains) {
+  const targetSet = new Set(targetStrains);
+  const { nodes, parentMap } = buildGraphNodes(targetStrains);
+
+  // Build D3 stratify data
+  const dataArr = nodes.map(id => ({
+    id,
+    parentId: parentMap[id] || null,
+    isTarget: targetSet.has(id),
+    info: parsedEBY[id] || {}
+  }));
+
+  // Find roots (no parent in our set)
+  const nodeSet = new Set(nodes);
+  const roots = dataArr.filter(d => !d.parentId || !nodeSet.has(d.parentId));
+
+  // If multiple roots, create a virtual root
+  let finalData = dataArr;
+  let hasVirtualRoot = false;
+  if (roots.length > 1) {
+    finalData = [{ id: '__root__', parentId: null, isTarget: false, info: {description: 'Root'} }, ...dataArr];
+    roots.forEach(r => { r.parentId = '__root__'; });
+    hasVirtualRoot = true;
+  }
+
+  const stratify = d3.stratify().id(d => d.id).parentId(d => d.parentId);
+  let root;
+  try { root = stratify(finalData); }
+  catch(e) { showStatus('Lineage structure error: ' + e.message, 'err'); return; }
+
+  // Layout
+  const svg = d3.select('#d3Canvas');
+  svg.selectAll('*').remove();
+
+  const container = document.getElementById('chartContainer');
+  const W = container.clientWidth  || 800;
+  const H = container.clientHeight || 500;
+
+  const nodeCount = nodes.length;
+  const nodeSpacingX = Math.max(120, Math.min(180, W / (root.height + 1)));
+  const nodeSpacingY = Math.max(60, Math.min(90, H / Math.max(nodeCount / (root.height + 1), 2)));
+
+  const treeLayout = d3.tree()
+    .nodeSize([nodeSpacingY, nodeSpacingX])
+    .separation((a, b) => a.parent === b.parent ? 1.1 : 1.4);
+
+  treeLayout(root);
+
+  // Rotate: tree goes left-to-right (x = depth, y = breadth)
+  const allNodes = root.descendants();
+  const minY = d3.min(allNodes, d => d.x);
+  const maxY = d3.max(allNodes, d => d.x);
+  const minX = d3.min(allNodes, d => d.y);
+  const maxX = d3.max(allNodes, d => d.y);
+  const treeW = maxX - minX;
+  const treeH = maxY - minY;
+
+  const PAD = 80;
+  const scaleX = (W - PAD * 2) / Math.max(treeW, 1);
+  const scaleY = (H - PAD * 2) / Math.max(treeH, 1);
+  const scale  = Math.min(scaleX, scaleY, 1);
+
+  const g = svg.append('g').attr('class', 'tree-group');
+
+  // Zoom
+  zoomBehavior = d3.zoom()
+    .scaleExtent([0.1, 4])
+    .on('zoom', evt => g.attr('transform', evt.transform));
+  svg.call(zoomBehavior);
+  svgSelection = svg;
+
+  // Links
+  const linkGen = d3.linkHorizontal()
+    .x(d => d.y * scale + PAD)
+    .y(d => d.x * scale + PAD - minY * scale);
+
+  g.selectAll('.link')
+    .data(root.links().filter(l => l.source.id !== '__root__'))
+    .join('path')
+    .attr('class', 'link')
+    .attr('d', linkGen);
+
+  // Nodes
+  const node = g.selectAll('.node')
+    .data(allNodes.filter(d => d.id !== '__root__'))
+    .join('g')
+    .attr('class', d => `node ${d.data.isTarget ? 'target' : ''}`)
+    .attr('transform', d => `translate(${d.y * scale + PAD},${d.x * scale + PAD - minY * scale})`)
+    .style('cursor', 'pointer')
+    .on('click', (evt, d) => showStrainInfo(d.id))
+    .on('mouseenter', (evt, d) => showTooltip(evt, d))
+    .on('mouseleave', hideTooltip);
+
+  // Circle
+  node.append('circle')
+    .attr('r', d => d.data.isTarget ? 8 : 6)
+    .attr('fill', d => {
+      if (d.data.isTarget) return 'var(--accent)';
+      if (d.data.info.genotypes && d.data.info.genotypes.length > 0) return 'var(--accent2-lt)';
+      return 'var(--surface2)';
+    })
+    .attr('stroke', d => d.data.isTarget ? 'var(--accent)' : 'var(--border2)');
+
+  // Label background
+  node.append('rect')
+    .attr('class', 'node-label-bg')
+    .attr('x', 12)
+    .attr('y', -9)
+    .attr('height', 14)
+    .attr('rx', 2)
+    .attr('fill', 'rgba(247,246,242,0.88)')
+    .each(function(d) {
+      const label = d.id;
+      d3.select(this).attr('width', label.length * 6.2 + 6);
+    });
+
+  // Label
+  node.append('text')
+    .attr('x', 14)
+    .attr('dy', '0.32em')
+    .attr('font-weight', d => d.data.isTarget ? '500' : '400')
+    .attr('fill', d => d.data.isTarget ? 'var(--accent)' : 'var(--ink2)')
+    .text(d => d.id);
+
+  // EBB chips under node
+  node.each(function(d) {
+    if (!d.data.info.genotypes || d.data.info.genotypes.length === 0) return;
+    const g2 = d3.select(this);
+    d.data.info.genotypes.forEach((geno, i) => {
+      g2.append('text')
+        .attr('x', 14)
+        .attr('dy', (i + 1) * 11 + 4)
+        .attr('font-size', 8)
+        .attr('fill', 'var(--accent2)')
+        .text(geno.locus ? `${geno.ebb} @${geno.locus}` : geno.ebb);
+    });
+  });
+
+  // Show panel
+  document.getElementById('placeholder').style.display = 'none';
+  document.getElementById('searchResults').style.display = 'none';
+  const rp = document.getElementById('resultsPanel');
+  rp.style.display = 'flex';
+
+  document.getElementById('resultsTitle').textContent = `Lineage: ${targetStrains.join(', ')}`;
+  document.getElementById('resultsSubtitle').textContent = `${nodes.length} strains · click a node to view details`;
+
+  // Fit to view
+  setTimeout(() => fitChart(g, W, H), 50);
+}
+
+function fitChart(g, W, H) {
+  if (!zoomBehavior || !svgSelection) return;
+  const bounds = g.node().getBBox();
+  if (!bounds.width || !bounds.height) return;
+  const PAD = 40;
+  const scale = Math.min(
+    (W - PAD * 2) / bounds.width,
+    (H - PAD * 2) / bounds.height,
+    1.5
+  );
+  const tx = (W - bounds.width * scale) / 2 - bounds.x * scale;
+  const ty = (H - bounds.height * scale) / 2 - bounds.y * scale;
+  svgSelection.call(
+    zoomBehavior.transform,
+    d3.zoomIdentity.translate(tx, ty).scale(scale)
+  );
+}
+
+function zoomIn()  { if (svgSelection && zoomBehavior) svgSelection.call(zoomBehavior.scaleBy, 1.3); }
+function zoomOut() { if (svgSelection && zoomBehavior) svgSelection.call(zoomBehavior.scaleBy, 0.77); }
+function resetZoom() {
+  const container = document.getElementById('chartContainer');
+  const g = d3.select('#d3Canvas .tree-group');
+  if (g.node()) fitChart(g, container.clientWidth, container.clientHeight);
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  TOOLTIP
+// ══════════════════════════════════════════════════════════════════
+function showTooltip(evt, d) {
+  const info = d.data.info;
+  if (!info) return;
+  const lines = [d.id];
+  if (info.description) lines.push(info.description);
+  if (info.genotypes && info.genotypes.length) {
+    lines.push('Integrations: ' + info.genotypes.map(g => g.ebb).join(', '));
+  }
+  const el = document.getElementById('tooltip');
+  el.textContent = lines.join('\n');
+  el.style.whiteSpace = 'pre';
+  el.style.display = 'block';
+  el.style.left = (evt.clientX + 12) + 'px';
+  el.style.top  = (evt.clientY - 8)  + 'px';
+}
+function hideTooltip() {
+  document.getElementById('tooltip').style.display = 'none';
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  STRAIN INFO PANEL
+// ══════════════════════════════════════════════════════════════════
+function showStrainInfo(strainName) {
+  const info = parsedEBY[strainName];
+  if (!info) return;
+
+  document.getElementById('infoPanelTitle').textContent = strainName;
+
+  // Collect full lineage for integrations
+  const lineage = getLineage(strainName);
+
+  // Build cumulative integrations across lineage
+  const allIntegrations = [];
+  lineage.forEach(s => {
+    const d = parsedEBY[s];
+    if (d && d.genotypes) {
+      d.genotypes.forEach(g => {
+        allIntegrations.push({ ...g, strain: s, desc: ebbDescDict[g.ebb] || '' });
+      });
+    }
+  });
+
+  const fields = [
+    { label: 'Description',   val: info.description || '—' },
+    { label: 'Parent',        val: extractParent(info.parent) || '—' },
+    { label: 'Plasmid (uncured)', val: info.plasmid || 'None' },
+    { label: 'Notes',         val: info.notes || '—' },
+  ];
+
+  let html = '<div class="info-grid">';
+  fields.forEach(f => {
+    html += `<div class="info-section">
+      <div class="info-section-label">${f.label}</div>
+      <div class="info-section-value">${escHtml(f.val)}</div>
+    </div>`;
+  });
+
+  // Integrations across lineage
+  html += `<div class="info-section" style="grid-column: 1 / -1;">
+    <div class="info-section-label">All integrations in lineage (${allIntegrations.length})</div>`;
+  if (allIntegrations.length === 0) {
+    html += '<div class="info-section-value">None recorded</div>';
+  } else {
+    html += '<div class="chip-row" style="margin-top:4px;">';
+    allIntegrations.forEach(i => {
+      html += `<div class="chip" title="${escHtml(i.desc)}">
+        <span>${escHtml(i.ebb)}${i.strain !== strainName ? ` <span style="opacity:0.6;font-size:8px;">(${i.strain})</span>` : ''}</span>
+        ${i.locus ? `<span class="chip-locus">@${escHtml(i.locus)}</span>` : ''}
+        ${i.desc ? `<span style="font-size:8px;color:var(--muted);margin-top:1px;">${escHtml(i.desc.slice(0, 60))}${i.desc.length > 60 ? '…' : ''}</span>` : ''}
+      </div>`;
+    });
+    html += '</div>';
+  }
+  html += '</div>';
+  html += '</div>';
+
+  document.getElementById('infoPanelBody').innerHTML = html;
+  document.getElementById('infoPanel').style.display = 'block';
+}
+
+function closeInfo() {
+  document.getElementById('infoPanel').style.display = 'none';
+}
+
+function escHtml(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  SEARCH BY EBB
+// ══════════════════════════════════════════════════════════════════
+function runSearch() {
+  clearStatus();
+  const raw = document.getElementById('ebbInput').value;
+  const targets = raw.split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
+
+  if (!targets.length) { showStatus('Enter at least one EBB name.', 'err'); return; }
+
+  setBtnLoading('btnSearch', 'btnSearchLabel', true);
+  setTimeout(() => {
+    try {
+      doSearch(targets);
+    } catch(e) {
+      showStatus('Error: ' + e.message, 'err');
+    }
+    setBtnLoading('btnSearch', 'btnSearchLabel', false, 'Search');
+  }, 60);
+}
+
+function doSearch(targetEBBs) {
+  const targetSet = new Set(targetEBBs);
+
+  // For each EBY strain, get its full lineage EBBs
+  const strainResults = [];
+  Object.keys(parsedEBY).forEach(strainName => {
+    const lineage = getLineage(strainName);
+    const lineageEBBs = new Set();
+    lineage.forEach(s => {
+      (parsedEBY[s]?.genotypes || []).forEach(g => lineageEBBs.add(g.ebb));
+    });
+    const matched = [...targetSet].filter(e => lineageEBBs.has(e));
+    if (matched.length > 0) {
+      strainResults.push({
+        name: strainName,
+        matched,
+        isComplete: matched.length === targetSet.size,
+        lineage,
+      });
+    }
+  });
+
+  // Sort by strain number descending
+  strainResults.sort((a, b) => strainNumber(b.name) - strainNumber(a.name));
+
+  const complete = strainResults.filter(r => r.isComplete);
+  const partial  = strainResults.filter(r => !r.isComplete);
+
+  // Render
+  const head = document.getElementById('searchResultsHead');
+  head.innerHTML = `Found <strong>${strainResults.length}</strong> strains carrying ${targetEBBs.join(', ')}` +
+    (targetSet.size > 1 ? ` — <strong>${complete.length}</strong> with all, <strong>${partial.length}</strong> partial` : '');
+
+  let html = '';
+  if (complete.length) {
+    html += renderSearchGroup('Complete matches', complete, targetSet, true);
+  }
+  if (partial.length && targetSet.size > 1) {
+    html += renderSearchGroup('Partial matches', partial, targetSet, false);
+  }
+  if (!complete.length && !partial.length) {
+    html += '<div style="padding:20px;color:var(--muted);font-family:var(--mono);font-size:12px;">No strains found.</div>';
+  }
+
+  document.getElementById('searchResultsBody').innerHTML = html;
+
+  // Show
+  document.getElementById('placeholder').style.display = 'none';
+  document.getElementById('resultsPanel').style.display = 'none';
+  const sr = document.getElementById('searchResults');
+  sr.style.display = 'flex';
+
+  // Wire up expand toggles
+  document.querySelectorAll('.src-header').forEach(el => {
+    el.addEventListener('click', () => {
+      const body = el.nextElementSibling;
+      body.classList.toggle('open');
+    });
+  });
+}
+
+function renderSearchGroup(label, results, targetSet, isComplete) {
+  let html = `<div class="search-results-head" style="margin-top:12px;">${label} (${results.length})</div>`;
+  results.forEach(r => {
+    html += `<div class="strain-result-card">
+      <div class="src-header">
+        <span class="src-name">${escHtml(r.name)}</span>
+        <span class="src-desc">${escHtml(parsedEBY[r.name]?.description || '')}</span>
+        <span class="src-badge ${isComplete ? 'complete' : 'partial'}">${isComplete ? '✓ all' : r.matched.length + '/' + targetSet.size}</span>
+      </div>
+      <div class="src-body">
+        ${renderLineageSteps(r.lineage, r.name, targetSet)}
+        <div style="margin-top:10px;display:flex;gap:6px;">
+          <button class="btn-secondary" style="font-size:11px;" onclick="event.stopPropagation();showLineageFor('${escHtml(r.name)}')">
+            🌿 View lineage chart
+          </button>
+        </div>
+      </div>
+    </div>`;
+  });
+  return html;
+}
+
+function renderLineageSteps(lineage, targetStrain, targetEBBs) {
+  let html = '<div class="lineage-steps">';
+  lineage.forEach((s, i) => {
+    const info = parsedEBY[s];
+    const isTarget = s === targetStrain;
+    const isLast = i === lineage.length - 1;
+    const genotypes = info?.genotypes || [];
+    const hasTarget = genotypes.some(g => targetEBBs.has(g.ebb));
+
+    html += `<div class="lineage-step">
+      <div class="step-connector">
+        <div class="step-dot ${isTarget ? 'target' : ''}"></div>
+        ${!isLast ? '<div class="step-line"></div>' : ''}
+      </div>
+      <div class="step-content">
+        <div class="step-strain ${isTarget ? 'target' : ''}">${escHtml(s)}</div>`;
+
+    if (genotypes.length > 0) {
+      html += '<div class="chip-row" style="margin-top:3px;">';
+      genotypes.forEach(g => {
+        const highlight = targetEBBs.has(g.ebb);
+        html += `<span class="chip" style="${highlight ? 'background:var(--accent-lt);border-color:#a7d9b3;color:var(--accent);' : ''}">
+          ${escHtml(g.ebb)}${g.locus ? `<span class="chip-locus">@${escHtml(g.locus)}</span>` : ''}
+        </span>`;
+      });
+      html += '</div>';
+    } else if (info?.donor) {
+      html += `<div class="step-donor">${escHtml(info.donor.slice(0, 80))}${info.donor.length > 80 ? '…' : ''}</div>`;
+    }
+
+    html += '</div></div>';
+  });
+  html += '</div>';
+  return html;
+}
+
+function showLineageFor(strainName) {
+  switchTab('lineage');
+  document.getElementById('strainInput').value = strainName;
+  document.getElementById('searchResults').style.display = 'none';
+  runLineage();
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  HELPERS
+// ══════════════════════════════════════════════════════════════════
+function setBtnLoading(btnId, labelId, loading, doneText = '') {
+  const btn = document.getElementById(btnId);
+  const lbl = document.getElementById(labelId);
+  btn.disabled = loading;
+  lbl.innerHTML = loading
+    ? '<span class="spinner"></span> Working…'
+    : doneText;
+}
+
+function clearResults() {
+  document.getElementById('resultsPanel').style.display = 'none';
+  document.getElementById('searchResults').style.display = 'none';
+  document.getElementById('infoPanel').style.display = 'none';
+  document.getElementById('placeholder').style.display = 'flex';
+  d3.select('#d3Canvas').selectAll('*').remove();
+  clearStatus();
+}
+
+function toggleAbout() {
+  document.getElementById('aboutPanel').classList.toggle('open');
+}
+</script>
+</body>
+</html>
